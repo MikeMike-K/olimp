@@ -61,7 +61,7 @@ def inject_globals():
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='threading',  # 🔹 Ключевое изменение
+    async_mode='threading',  # 🔹 Обязательно
     logger=False,
     engineio_logger=False
 )
