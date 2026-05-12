@@ -1,44 +1,53 @@
-import os
-import os, threading
+# ===== 1. ИМПОРТЫ (в самом верху) =====
+import os, threading, logging
 from flask import Flask, render_template, redirect, url_for, request, flash, send_from_directory, jsonify
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from models import db, User, TheoryBlock, TheoryTopic, TopicFile, Problem, ProblemFile, Message, RoleRequest, Favorite, Notification, GroupChat, GroupMessage, PinnedChat
-from flask_caching import Cache
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+from flask_caching import Cache  # 🔹 Добавляем импорт кэша
+# ... остальные импорты из models ...
 
-#ghbdtn
-
-
-app = Flask(__name__)
+# ===== 2. СОЗДАНИЕ ПРИЛОЖЕНИЯ (app должен быть первым!) =====
+app = Flask(__name__)  # 🔹 1. Создаём app
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
-# 🔹 Используем PostgreSQL если есть переменная, иначе SQLite для локалки
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///olimp.db').replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+# 🔹 2. Настраиваем пул соединений (ДО db.init_app)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'max_overflow': 5,
+    'pool_pre_ping': True,
+    'pool_recycle': 1800,
+    'pool_timeout': 30
+}
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,          # Максимум соединений в пуле
-    'max_overflow': 5,        # Временные соединения при нагрузке
-    'pool_pre_ping': True,    # 🔹 Проверяет соединение после "сна" Render
-    'pool_recycle': 1800,     # Обновляет соединение каждые 30 мин
-    'pool_timeout': 30        # Таймаут ожидания соединения
-}
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# ===== 3. ИНИЦИАЛИЗАЦИЯ РАСШИРЕНИЙ (после app) =====
+db.init_app(app)  # 🔹 Сначала init_app
 
-from flask_caching import Cache
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
-
-db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# 🔹 3. Теперь инициализируем кэш (app уже существует!)
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+
+# 🔹 4. SocketIO (после app)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=10,
+    ping_interval=25
+)
 
 
 @login_manager.user_loader
@@ -804,9 +813,22 @@ def inject_globals():
     return dict(unread_count=0, my_groups=[])
 
 # ===== ЗАПУСК =====
+# ===== В САМОМ КОНЦЕ app.py =====
 with app.app_context():
     db.create_all()
     create_super_admin()
 
+    # 🔹 Применяем индексы к существующим таблицам (один раз)
+    from sqlalchemy import text
+
+    with db.engine.connect() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_sender ON message(sender_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_receiver ON message(receiver_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_time ON message(timestamp)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"))
+        conn.commit()
+    print("✅ Индексы применены")
+
+# 🔹 Запуск только для локальной разработки
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
