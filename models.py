@@ -5,7 +5,7 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
-# 🔹 Таблица связей для участников групп
+# Таблица связей для участников групп
 group_member = db.Table('group_member',
                         db.Column('group_id', db.Integer, db.ForeignKey('group_chat.id'), primary_key=True),
                         db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True)
@@ -119,7 +119,7 @@ class GroupChat(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     avatar = db.Column(db.String(200), nullable=True)
-    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # nullable для системных групп
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     role_required = db.Column(db.String(20), nullable=False)
     is_custom = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

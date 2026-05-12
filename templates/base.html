@@ -6,8 +6,7 @@
     <title>{% block title %}Olimp{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Встроенные стили гарантируют, что визуал не сломается из-за конфликтов в style.css */
-        :root { --nav-bg: linear-gradient(135deg, #2c3e50, #3498db); --text-light: #fff; --accent: #e74c3c; --bg-light: #f4f6f9; }
+        :root { --nav-bg: linear-gradient(135deg, #2c3e50, #3498db); --text-light: #fff; --accent: #e74c3c; --bg-light: #f8f9fa; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-light); color: #333; min-height: 100vh; }
         .navbar { background: var(--nav-bg); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 3px 12px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 999; }
@@ -32,10 +31,7 @@
         .flash.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
         .flash.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
         .flash.info { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
-        @media (max-width: 768px) {
-            .navbar { flex-direction: column; gap: 10px; }
-            .nav-right { flex-wrap: wrap; justify-content: center; }
-        }
+        @media (max-width: 768px) { .navbar { flex-direction: column; gap: 10px; } .nav-right { flex-wrap: wrap; justify-content: center; } }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -44,12 +40,9 @@
         <a href="{{ url_for('index') }}" class="logo">Olimp</a>
         <div class="nav-right">
             {% if current_user.is_authenticated %}
-                <!-- 🔔 Уведомления -->
                 <div class="notif-wrapper">
                     <button id="notif-btn" class="notif-btn">🔔
-                        {% if unread_count > 0 %}
-                            <span class="notif-badge">{{ unread_count }}</span>
-                        {% endif %}
+                        {% if unread_count > 0 %}<span class="notif-badge">{{ unread_count }}</span>{% endif %}
                     </button>
                     <div id="notif-dropdown" class="notif-dropdown">
                         <div class="notif-header">Уведомления</div>
@@ -59,8 +52,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- 👥 Групповые чаты -->
                 {% if my_groups %}
                     <a href="{{ url_for('chat', group=my_groups[0].id) }}" class="nav-link" title="Чат с командой">
                         {% if current_user.role in ['admin','super_admin'] %}💬 Админы
@@ -69,76 +60,41 @@
                         {% endif %}
                     </a>
                 {% endif %}
-
-                <!-- Профиль / Админка -->
                 <a href="{{ url_for('admin_panel') if current_user.role in ['admin','super_admin'] else url_for('profile') }}" class="nav-link">
                     {% if current_user.role in ['admin','super_admin'] %}🛡️ Админка{% else %}👤 Профиль{% endif %}
                 </a>
                 <a href="{{ url_for('logout') }}" class="nav-link">🚪 Выход</a>
             {% else %}
-                <a href="{{ url_for('login') }}" class="nav-link">Вход</a>
-                <a href="{{ url_for('register') }}" class="nav-link">Регистрация</a>
+                {% if 'login' in app.view_functions %}<a href="{{ url_for('login') }}" class="nav-link">Вход</a>{% endif %}
+                {% if 'register' in app.view_functions %}<a href="{{ url_for('register') }}" class="nav-link">Регистрация</a>{% endif %}
             {% endif %}
         </div>
     </nav>
-
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
+            {% if messages %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endif %}
         {% endwith %}
         {% block content %}{% endblock %}
     </div>
-
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const btn = document.getElementById('notif-btn');
-        const dropdown = document.getElementById('notif-dropdown');
-        const list = document.getElementById('notif-list');
-        const badge = document.getElementById('notif-badge');
-        const markBtn = document.getElementById('mark-read');
-
+        const btn = document.getElementById('notif-btn'), dropdown = document.getElementById('notif-dropdown'), list = document.getElementById('notif-list'), badge = document.getElementById('notif-badge'), markBtn = document.getElementById('mark-read');
         if(btn) {
             btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const isOpen = dropdown.style.display === 'block';
-                dropdown.style.display = isOpen ? 'none' : 'block';
-
+                e.stopPropagation(); const isOpen = dropdown.style.display === 'block'; dropdown.style.display = isOpen ? 'none' : 'block';
                 if(!isOpen) {
                     try {
-                        const res = await fetch('/notifications/list');
-                        const notifs = await res.json();
-                        if(notifs.length === 0) {
-                            list.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Нет уведомлений</div>';
-                        } else {
-                            list.innerHTML = notifs.map(n => `
-                                <div class="notif-item ${n.read ? '' : 'unread'}">
-                                    <div class="notif-title">${n.title}</div>
-                                    <div class="notif-msg">${n.message}</div>
-                                    <div class="notif-time">${n.time}</div>
-                                    ${n.link ? `<a href="${n.link}" class="notif-link">Открыть →</a>` : ''}
-                                </div>
-                            `).join('');
+                        const res = await fetch('/notifications/list'), notifs = await res.json();
+                        if(notifs.length === 0) list.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Нет уведомлений</div>';
+                        else {
+                            list.innerHTML = notifs.map(n => `<div class="notif-item ${n.read ? '' : 'unread'}"><div class="notif-title">${n.title}</div><div class="notif-msg">${n.message}</div><div class="notif-time">${n.time}</div>${n.link ? `<a href="${n.link}" class="notif-link">Открыть →</a>` : ''}</div>`).join('');
                             if(badge) await fetch('/notifications/mark_read', {method:'POST'}).then(() => badge.remove());
                         }
-                    } catch(err) {
-                        list.innerHTML = '<div style="padding:15px; color:#e74c3c;">Ошибка загрузки</div>';
-                    }
+                    } catch(err) { list.innerHTML = '<div style="padding:15px; color:#e74c3c;">Ошибка загрузки</div>'; }
                 }
             });
-
-            markBtn?.addEventListener('click', async () => {
-                await fetch('/notifications/mark_read', {method:'POST'});
-                dropdown.style.display = 'none';
-                if(badge) badge.remove();
-            });
-
-            document.addEventListener('click', (e) => {
-                if(!btn.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
-            });
+            markBtn?.addEventListener('click', async () => { await fetch('/notifications/mark_read', {method:'POST'}); dropdown.style.display = 'none'; if(badge) badge.remove(); });
+            document.addEventListener('click', (e) => { if(!btn.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none'; });
         }
     });
     </script>

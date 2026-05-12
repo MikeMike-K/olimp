@@ -1,28 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Olimp — Главная{% endblock %}
+{% block title %}Главная - Olimp{% endblock %}
 {% block content %}
-<div class="card" style="text-align:center; padding:40px;">
-    <h1 style="font-size:36px; margin-bottom:10px;">Добро пожаловать в Olimp</h1>
-    <p style="font-size:18px; color:#666;">Платформа для подготовки к олимпиадам</p>
-</div>
-
-{% if current_user.is_authenticated %}
-<div class="hero-buttons">
-    <a href="{{ url_for('theory') }}" class="hero-btn">📚 Теория</a>
-    <a href="{{ url_for('problems') }}" class="hero-btn">📝 Банк задач</a>
-    <a href="{{ url_for('chat') }}" class="hero-btn">💬 Чат с администрацией</a>
-    {% if current_user.role in ['admin', 'super_admin', 'moderator', 'editor'] %}
-        <a href="{{ url_for('theory_edit') }}" class="hero-btn">✏️ Редактировать теорию</a>
+<div style="text-align:center; padding:60px 20px;">
+    <h1 style="font-size:48px; margin-bottom:20px; color:#2c3e50;">🎓 Olimp</h1>
+    <p style="font-size:18px; color:#666; margin-bottom:30px; max-width:600px; margin-left:auto; margin-right:auto;">
+        Платформа для подготовки к олимпиадам. Теория, задачи, чат с наставниками.
+    </p>
+    {% if not current_user.is_authenticated %}
+        <div style="display:flex; gap:15px; justify-content:center; flex-wrap:wrap;">
+            {% if 'login' in app.view_functions %}<a href="{{ url_for('login') }}" class="btn btn-primary" style="padding:12px 30px; font-size:16px;">Войти</a>{% endif %}
+            {% if 'register' in app.view_functions %}<a href="{{ url_for('register') }}" class="btn btn-secondary" style="padding:12px 30px; font-size:16px;">Регистрация</a>{% endif %}
+        </div>
+    {% else %}
+        <div style="display:flex; gap:15px; justify-content:center; flex-wrap:wrap;">
+            <a href="{{ url_for('chat') }}" class="btn btn-primary" style="padding:12px 30px; font-size:16px;">💬 Чат</a>
+            <a href="{{ url_for('profile') }}" class="btn btn-secondary" style="padding:12px 30px; font-size:16px;">👤 Профиль</a>
+        </div>
     {% endif %}
-    {% if current_user.role in ['admin', 'super_admin', 'editor'] %}
-        <a href="{{ url_for('problem_bank_edit') }}" class="hero-btn">📋 Редактировать задачи</a>
-    {% endif %}
 </div>
-{% else %}
-<div class="card" style="text-align:center; padding:40px;">
-    <p style="font-size:18px; margin-bottom:20px;">Войдите или зарегистрируйтесь для доступа к материалам</p>
-    <a href="{{ url_for('login') }}" class="btn btn-primary">Вход</a>
-    <a href="{{ url_for('register') }}" class="btn btn-success">Регистрация</a>
-</div>
-{% endif %}
 {% endblock %}

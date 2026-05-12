@@ -1,19 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Вход{% endblock %}
+{% block title %}Вход - Olimp{% endblock %}
 {% block content %}
-<div class="card" style="max-width:400px; margin:50px auto;">
-    <h2 style="text-align:center;">Вход</h2>
-    <form method="POST">
-        <div class="form-group">
-            <label>Логин</label>
-            <input type="text" name="username" required>
-        </div>
-        <div class="form-group">
-            <label>Пароль</label>
-            <input type="password" name="password" required>
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;">Войти</button>
+<div style="max-width:400px; margin:40px auto; background:#fff; padding:30px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+    <h2 style="text-align:center; margin-bottom:25px; color:#2c3e50;">🔐 Вход</h2>
+    <form method="POST" style="display:flex; flex-direction:column; gap:15px;">
+        <input type="text" name="username" placeholder="Логин" required style="padding:12px; border:2px solid #e2e8f0; border-radius:8px; font-size:14px;">
+        <input type="password" name="password" placeholder="Пароль" required style="padding:12px; border:2px solid #e2e8f0; border-radius:8px; font-size:14px;">
+        <button type="submit" class="btn btn-primary" style="padding:12px; border:none; border-radius:8px; background:#3498db; color:#fff; font-size:16px; cursor:pointer;">Войти</button>
     </form>
-    <p style="text-align:center; margin-top:15px;">Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a></p>
+    <p style="text-align:center; margin-top:20px; color:#666;">
+        Нет аккаунта? {% if 'register' in app.view_functions %}<a href="{{ url_for('register') }}">Зарегистрироваться</a>{% endif %}
+    </p>
 </div>
 {% endblock %}

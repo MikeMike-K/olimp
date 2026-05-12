@@ -1,54 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Профиль{% endblock %}
+{% block title %}Профиль - Olimp{% endblock %}
 {% block content %}
-<div class="card">
-    <h2>Профиль</h2>
-    <div class="profile-info">
-        <div class="profile-field">
-            <label>Логин</label>
-            <p>{{ user.username }}</p>
+<div style="max-width:600px; margin:0 auto; background:#fff; padding:30px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+    <h2 style="margin-bottom:25px; color:#2c3e50;">👤 Профиль</h2>
+    <div style="display:grid; gap:15px;">
+        <div><strong>Логин:</strong> {{ user.username }}</div>
+        <div><strong>Email:</strong> {{ user.email }}</div>
+        <div><strong>Дата рождения:</strong> {{ user.birth_date }}</div>
+        <div><strong>Роль:</strong>
+            {% if user.role == 'student' %}<span style="color:#3498db;">Ученик</span>
+            {% elif user.role == 'operator' %}<span style="color:#e67e22;">Оператор</span>
+            {% elif user.role == 'editor' %}<span style="color:#9b59b6;">Редактор</span>
+            {% elif user.role == 'admin' %}<span style="color:#e74c3c;">Админ</span>
+            {% else %}<span style="color:#c0392b;">Супер-админ</span>{% endif %}
         </div>
-        <div class="profile-field">
-            <label>Статус</label>
-            <p>
-                {% if user.role == 'student' %}
-                    <span class="badge badge-student">Ученик</span>
-                {% elif user.role == 'moderator' %}
-                    <span class="badge badge-moderator">Оператор</span>
-                {% elif user.role == 'editor' %}
-                    <span class="badge badge-editor">Редактор</span>
-                {% elif user.role == 'admin' %}
-                    <span class="badge badge-admin">Администратор</span>
-                {% endif %}
-            </p>
-        </div>
-        <div class="profile-field">
-            <label>Email</label>
-            <p>{{ user.email }}</p>
-        </div>
-        <div class="profile-field">
-            <label>Дата рождения</label>
-            <p>{{ user.birth_date }}</p>
-        </div>
+        <div><strong>Дата регистрации:</strong> {{ user.created_at.strftime('%d.%m.%Y') }}</div>
     </div>
-</div>
-
-<div class="card">
-    <h3>Изменить пароль и email</h3>
-    <form method="POST" style="max-width:400px;">
-        <div class="form-group">
-            <label>Новый пароль</label>
-            <input type="password" name="new_password">
-        </div>
-        <div class="form-group">
-            <label>Подтвердите новый пароль</label>
-            <input type="password" name="confirm_password">
-        </div>
-        <div class="form-group">
-            <label>Новый email</label>
-            <input type="email" name="email" value="{{ user.email }}">
-        </div>
-        <button type="submit" class="btn btn-primary">Сохранить</button>
-    </form>
+    <div style="margin-top:30px; display:flex; gap:10px;">
+        <a href="{{ url_for('chat') }}" class="btn btn-primary" style="padding:10px 20px; text-decoration:none; border-radius:8px; background:#3498db; color:#fff;">💬 Чат</a>
+        {% if current_user.role in ['admin','super_admin'] %}
+            <a href="{{ url_for('admin_panel') }}" class="btn btn-secondary" style="padding:10px 20px; text-decoration:none; border-radius:8px; background:#95a5a6; color:#fff;">🛡️ Админка</a>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}
