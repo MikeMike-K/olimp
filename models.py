@@ -7,11 +7,11 @@ db = SQLAlchemy()
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    username = db.Column(db.String(80), unique=True, nullable=False,index=True)
     password = db.Column(db.String(128), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     birth_date = db.Column(db.String(20), nullable=False)
-    role = db.Column(db.String(20), default='student')  # student, operator, editor, admin, super_admin
+    role = db.Column(db.String(20), default='student',index=True)  # student, operator, editor, admin, super_admin
     agreed = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     messages_sent = db.relationship('Message', foreign_keys='Message.sender_id', backref='sender', lazy=True)
@@ -52,12 +52,12 @@ class ProblemFile(db.Model):
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False,index=True)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False,index=True)
     content = db.Column(db.Text, nullable=True)
     filename = db.Column(db.String(200), nullable=True)
     filepath = db.Column(db.String(500), nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow,index=True)
     is_read = db.Column(db.Boolean, default=False)
 
 class RoleRequest(db.Model):

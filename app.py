@@ -7,7 +7,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from models import db, User, TheoryBlock, TheoryTopic, TopicFile, Problem, ProblemFile, Message, RoleRequest, Favorite, Notification, GroupChat, GroupMessage, PinnedChat
-
+from flask_caching import Cache
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 #ghbdtn
 
@@ -22,6 +23,18 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,          # Максимум соединений в пуле
+    'max_overflow': 5,        # Временные соединения при нагрузке
+    'pool_pre_ping': True,    # 🔹 Проверяет соединение после "сна" Render
+    'pool_recycle': 1800,     # Обновляет соединение каждые 30 мин
+    'pool_timeout': 30        # Таймаут ожидания соединения
+}
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+from flask_caching import Cache
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -32,6 +45,14 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+from flask import send_from_directory
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    resp = send_from_directory('static', filename)
+    resp.cache_control.max_age = 31536000  # Кэш на 1 год
+    resp.cache_control.public = True
+    return resp
 
 # ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ВСЕХ ШАБЛОНОВ =====
 @app.context_processor
@@ -61,11 +82,12 @@ def inject_globals():
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='threading',  # 🔹 Обязательно
+    async_mode='threading',
     logger=False,
-    engineio_logger=False
+    engineio_logger=False,
+    ping_timeout=10,
+    ping_interval=25
 )
-
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar'}
 
 
@@ -101,6 +123,15 @@ def create_super_admin():
         db.session.add(GroupChat(name='Чат админов', role_required='admin', is_custom=False))
         db.session.commit()
 
+with app.app_context():
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_sender ON message(sender_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_receiver ON message(receiver_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_time ON message(timestamp)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"))
+        conn.commit()
+    print("✅ Индексы применены")
 
 # ===== МАРШРУТЫ =====
 @app.route('/')
@@ -342,10 +373,9 @@ def chat():
         selected_group = GroupChat.query.get_or_404(group_id)
         messages = GroupMessage.query.filter_by(chat_id=group_id).order_by(GroupMessage.timestamp).all()
     elif chat_user_id:
-        messages = Message.query.filter(
-            ((Message.sender_id == current_user.id) & (Message.receiver_id == chat_user_id)) |
-            ((Message.sender_id == chat_user_id) & (Message.receiver_id == current_user.id))
-        ).order_by(Message.timestamp).all()
+        messages = Message.query.filter(            ((Message.sender_id == current_user.id) & (Message.receiver_id == chat_user_id)) |
+            ((Message.sender_id == chat_user_id) & (Message.receiver_id == current_user.id))).order_by(Message.timestamp.desc()).limit(50).all()
+        messages.reverse()
         for m in messages:
             if m.receiver_id == current_user.id: m.is_read = True
         db.session.commit()
