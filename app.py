@@ -1,4 +1,4 @@
-# ===== 1. ИМПОРТЫ (в самом верху) =====
+# ===== БЛОК 1: ИМПОРТЫ (в самом верху) =====
 import os, threading, logging
 from flask import Flask, render_template, redirect, url_for, request, flash, send_from_directory, jsonify
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -6,18 +6,20 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from flask_caching import Cache  # 🔹 Добавляем импорт кэша
-# ... остальные импорты из models ...
+from flask_caching import Cache
+from sqlalchemy import text
+from models import db, User, TheoryBlock, TheoryTopic, TopicFile, Problem, ProblemFile, Message, RoleRequest, Favorite, Notification, GroupChat, GroupMessage, PinnedChat
 
-# ===== 2. СОЗДАНИЕ ПРИЛОЖЕНИЯ (app должен быть первым!) =====
-app = Flask(__name__)  # 🔹 1. Создаём app
+# ===== БЛОК 2: СОЗДАНИЕ ПРИЛОЖЕНИЯ (app создаётся ПЕРВЫМ!) =====
+app = Flask(__name__)  # 🔹 1. Создаём app - это должно быть РАНЬШЕ всего, что использует app
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///olimp.db').replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# 🔹 2. Настраиваем пул соединений (ДО db.init_app)
+# 🔹 Пул соединений для БД (настраиваем ДО db.init_app)
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_size': 10,
     'max_overflow': 5,
@@ -28,17 +30,17 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# ===== 3. ИНИЦИАЛИЗАЦИЯ РАСШИРЕНИЙ (после app) =====
-db.init_app(app)  # 🔹 Сначала init_app
+# ===== БЛОК 3: ИНИЦИАЛИЗАЦИЯ РАСШИРЕНИЙ (только ПОСЛЕ создания app) =====
+db.init_app(app)  # 🔹 Сначала init_app для всех расширений
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# 🔹 3. Теперь инициализируем кэш (app уже существует!)
+# 🔹 Теперь инициализируем кэш (app уже существует!)
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
-# 🔹 4. SocketIO (после app)
+# 🔹 SocketIO (после app)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -52,53 +54,18 @@ socketio = SocketIO(
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
-
-from flask import send_from_directory
-
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    resp = send_from_directory('static', filename)
-    resp.cache_control.max_age = 31536000  # Кэш на 1 год
-    resp.cache_control.public = True
-    return resp
-
-# ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ВСЕХ ШАБЛОНОВ =====
-@app.context_processor
-def inject_globals():
-    if current_user.is_authenticated:
-        # Считаем непрочитанные уведомления
-        unread = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
-
-        # Определяем доступные групповые чаты
-        role = current_user.role
-        groups = []
-        if role == 'operator':
-            groups = GroupChat.query.filter_by(role_required='operator').all()
-        elif role == 'editor':
-            groups = GroupChat.query.filter_by(role_required='editor').all()
-        elif role in ['admin', 'super_admin']:
-            groups = GroupChat.query.filter_by(role_required='admin').all()
-
-        return dict(unread_count=unread, my_groups=groups)
-
-    # Если пользователь не авторизован
-    return dict(unread_count=0, my_groups=[])
+    return db.session.get(User, int(user_id))
 
 
-# SocketIO (threading для стабильности на Python 3.13)
-# ✅ Используем threading для совместимости с Python 3.14 на Render
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode='threading',
-    logger=False,
-    engineio_logger=False,
-    ping_timeout=10,
-    ping_interval=25
-)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar'}
 
+
+ROLE_GROUPS = {
+    'operator': 'room_operators',
+    'editor': 'room_editors',
+    'admin': 'room_admins',
+    'super_admin': 'room_admins'
+}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -108,15 +75,6 @@ def allowed_file(filename):
 online_users = set()
 sid_to_user = {}
 lock = threading.Lock()
-
-# Роли, имеющие доступ к групповым чатам
-# Маппинг ролей на SocketIO-комнаты
-ROLE_GROUPS = {
-    'operator': 'room_operators',
-    'editor': 'room_editors',
-    'admin': 'room_admins',
-    'super_admin': 'room_admins'
-}
 
 
 def create_super_admin():
@@ -131,16 +89,6 @@ def create_super_admin():
         db.session.add(GroupChat(name='Чат редакторов', role_required='editor', is_custom=False))
         db.session.add(GroupChat(name='Чат админов', role_required='admin', is_custom=False))
         db.session.commit()
-
-with app.app_context():
-    from sqlalchemy import text
-    with db.engine.connect() as conn:
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_sender ON message(sender_id)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_receiver ON message(receiver_id)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_time ON message(timestamp)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"))
-        conn.commit()
-    print("✅ Индексы применены")
 
 # ===== МАРШРУТЫ =====
 @app.route('/')
@@ -814,21 +762,145 @@ def inject_globals():
 
 # ===== ЗАПУСК =====
 # ===== В САМОМ КОНЦЕ app.py =====
-with app.app_context():
-    db.create_all()
-    create_super_admin()
+# ===== БЛОК 1: ИМПОРТЫ (в самом верху) =====
+import os, threading, logging
+from flask import Flask, render_template, redirect, url_for, request, flash, send_from_directory, jsonify
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from datetime import datetime
+from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_caching import Cache
+from models import db, User, TheoryBlock, TheoryTopic, TopicFile, Problem, ProblemFile, Message, RoleRequest, Favorite, \
+    Notification, GroupChat, GroupMessage, PinnedChat
 
-    # 🔹 Применяем индексы к существующим таблицам (один раз)
-    from sqlalchemy import text
+# ===== БЛОК 2: СОЗДАНИЕ ПРИЛОЖЕНИЯ (app создаётся ПЕРВЫМ!) =====
+app = Flask(__name__)  # 🔹 1. Создаём app - это должно быть РАНЬШЕ всего, что использует app
 
-    with db.engine.connect() as conn:
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_sender ON message(sender_id)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_receiver ON message(receiver_id)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_time ON message(timestamp)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"))
-        conn.commit()
-    print("✅ Индексы применены")
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///olimp.db').replace('postgres://',
+                                                                                                     'postgresql://')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# 🔹 Запуск только для локальной разработки
+# 🔹 Пул соединений для БД (настраиваем ДО db.init_app)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'max_overflow': 5,
+    'pool_pre_ping': True,
+    'pool_recycle': 1800,
+    'pool_timeout': 30
+}
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# ===== БЛОК 3: ИНИЦИАЛИЗАЦИЯ РАСШИРЕНИЙ (только ПОСЛЕ создания app) =====
+db.init_app(app)  # 🔹 Сначала init_app для всех расширений
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# 🔹 Теперь инициализируем кэш (app уже существует!)
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+
+# 🔹 SocketIO (после app)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=10,
+    ping_interval=25
+)
+
+
+# ===== БЛОК 4: ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И РОУТЫ =====
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar'}
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Глобальные переменные для онлайн-трекинга
+online_users = set()
+sid_to_user = {}
+lock = threading.Lock()
+
+
+def create_super_admin():
+    if not User.query.filter_by(username='superadmin').first():
+        sa = User(username='superadmin', password=generate_password_hash('super123'),
+                  email='superadmin@olimp.ru', birth_date='01.01.2000', role='super_admin', agreed=True)
+        db.session.add(sa);
+        db.session.commit()
+
+    if not GroupChat.query.first():
+        db.session.add(GroupChat(name='Чат операторов', role_required='operator', is_custom=False))
+        db.session.add(GroupChat(name='Чат редакторов', role_required='editor', is_custom=False))
+        db.session.add(GroupChat(name='Чат админов', role_required='admin', is_custom=False))
+        db.session.commit()
+
+
+# ===== РОУТЫ (примеры - ваш код может быть длиннее) =====
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/chat')
+@login_required
+def chat():
+    # ... ваш код чата ...
+    return render_template('chat.html', users=[], messages=[])
+
+
+# ===== КОНТЕКСТ-ПРОЦЕССОР ДЛЯ ШАБЛОНОВ =====
+@app.context_processor
+def inject_globals():
+    if current_user.is_authenticated:
+        unread = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
+        role = current_user.role
+        groups = GroupChat.query.filter(
+            GroupChat.role_required.in_([role, 'admin' if role == 'super_admin' else role])).all()
+        return dict(unread_count=unread, my_groups=groups)
+    return dict(unread_count=0, my_groups=[])
+
+
+# ===== SOCKET.IO ОБРАБОТЧИКИ =====
+@socketio.on('connect')
+def handle_connect():
+    pass
+
+
+@socketio.on('send_message')
+def handle_message(data):
+    # ... ваш код обработки сообщений ...
+    pass
+
+
+# ===== ЗАПУСК (в самом конце файла) =====
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        create_super_admin()
+        # Применяем индексы к существующим таблицам
+        from sqlalchemy import text
+
+        with db.engine.connect() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_sender ON message(sender_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_receiver ON message(receiver_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_msg_time ON message(timestamp)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"))
+            conn.commit()
+        print("✅ Индексы применены")
+
     socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
