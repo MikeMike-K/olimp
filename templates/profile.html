@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Профиль{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Профиль</h2>
+    <div class="profile-info">
+        <div class="profile-field">
+            <label>Логин</label>
+            <p>{{ user.username }}</p>
+        </div>
+        <div class="profile-field">
+            <label>Статус</label>
+            <p>
+                {% if user.role == 'student' %}
+                    <span class="badge badge-student">Ученик</span>
+                {% elif user.role == 'moderator' %}
+                    <span class="badge badge-moderator">Оператор</span>
+                {% elif user.role == 'editor' %}
+                    <span class="badge badge-editor">Редактор</span>
+                {% elif user.role == 'admin' %}
+                    <span class="badge badge-admin">Администратор</span>
+                {% endif %}
+            </p>
+        </div>
+        <div class="profile-field">
+            <label>Email</label>
+            <p>{{ user.email }}</p>
+        </div>
+        <div class="profile-field">
+            <label>Дата рождения</label>
+            <p>{{ user.birth_date }}</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Изменить пароль и email</h3>
+    <form method="POST" style="max-width:400px;">
+        <div class="form-group">
+            <label>Новый пароль</label>
+            <input type="password" name="new_password">
+        </div>
+        <div class="form-group">
+            <label>Подтвердите новый пароль</label>
+            <input type="password" name="confirm_password">
+        </div>
+        <div class="form-group">
+            <label>Новый email</label>
+            <input type="email" name="email" value="{{ user.email }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Редактирование задач{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:20px;">📋 Редактирование банка задач</h1>
+
+<div class="card">
+    <h3>Добавить задачу</h3>
+    <form method="POST" action="{{ url_for('add_problem') }}">
+        <div class="form-group">
+            <label>Название</label>
+            <input type="text" name="title" required>
+        </div>
+        <div class="form-group">
+            <label>Условие</label>
+            <textarea name="description" rows="4" required></textarea>
+        </div>
+        <div class="form-group">
+            <label>Решение (видно модераторам и выше)</label>
+            <textarea name="solution" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Сложность</label>
+            <select name="difficulty">
+                <option value="easy">Лёгкая</option>
+                <option value="medium" selected>Средняя</option>
+                <option value="hard">Сложная</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-success">Добавить задачу</button>
+    </form>
+</div>
+
+{% for problem in problems %}
+<!-- ... внутри цикла for problem in problems ... -->
+<form method="POST" action="{{ url_for('upload_problem_file', problem_id=problem.id) }}" style="display:flex; gap:10px; margin:15px 0; align-items:center;" enctype="multipart/form-data">
+    <input type="file" name="file" style="flex:1;">
+    <button type="submit" class="btn btn-success">📎 Прикрепить файл</button>
+</form>
+
+<div class="card">
+    <h2>{{ problem.title }}</h2>
+    <span class="badge {% if problem.difficulty == 'easy' %}badge-student{% elif problem.difficulty == 'medium' %}badge-moderator{% else %}badge-admin{% endif %}">{{ problem.difficulty }}</span>
+
+    <form method="POST" action="{{ url_for('upload_problem_file', problem_id=problem.id) }}" style="display:flex; gap:10px; margin:15px 0; align-items:center;">
+        <input type="file" name="file" style="flex:1;">
+        <button type="submit" class="btn btn-success">Прикрепить файл</button>
+    </form>
+
+    {% if problem.files %}
+    <div style="font-size:14px;">
+        Файлы:
+        {% for f in problem.files %}
+            <a href="{{ url_for('uploaded_file', filename=f.filepath) }}" style="margin-right:15px; color:#3498db;">{{ f.filename }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('delete_problem', problem_id=problem.id) }}" style="margin-top:15px;">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Удалить задачу?')">Удалить задачу</button>
+    </form>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}Чат{% endblock %}
+{% block content %}
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg-chat: #f4f6f9; --bg-sidebar: #ffffff; --primary: #3498db; --accent: #e67e22;
+    --text: #2c3e50; --muted: #95a5a6; --online: #2ecc71; --offline: #bdc3c7;
+    --border: #e2e8f0; --hover: #f8fafc; --active: #eff6ff; --radius: 12px;
+  }
+  .chat-wrapper { display: flex; height: 78vh; gap: 15px; background: var(--bg-chat); padding: 15px; border-radius: var(--radius); }
+  .chat-sidebar { width: 320px; background: var(--bg-sidebar); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.06); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab-btn { flex: 1; padding: 12px; background: none; border: none; cursor: pointer; font-weight: 600; color: var(--muted); transition: 0.2s; font-size: 14px; }
+  .tab-btn.active { color: var(--primary); border-bottom: 2px solid var(--primary); background: #f8fafc; }
+  .user-list { flex: 1; overflow-y: auto; padding: 5px; }
+  .section-title { padding: 10px 12px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 700; }
+  .chat-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; gap: 10px; text-decoration: none; color: inherit; position: relative; }
+  .chat-item:hover, .chat-item.active { background: var(--active); }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: #ecf0f1; display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text); font-size: 14px; flex-shrink: 0; position: relative; background-size: cover; background-position: center; }
+  .avatar.group { background: var(--primary); color: #fff; }
+  .avatar.pinned-op { background: var(--accent); color: #fff; }
+  .status-dot { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--offline); border: 2px solid #fff; transition: 0.2s; }
+  .status-dot.online { background: var(--online); }
+  .item-info { flex: 1; min-width: 0; }
+  .item-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .item-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .item-actions { display: flex; gap: 6px; }
+  .action-btn { background: none; border: none; cursor: pointer; font-size: 16px; color: #cbd5e1; transition: 0.2s; padding: 4px; border-radius: 4px; }
+  .action-btn:hover { background: #f1f5f9; }
+  .action-btn.active { color: #f59e0b; }
+  .action-btn.pin-active { color: var(--accent); }
+
+  .chat-main { flex: 1; background: #fff; border-radius: var(--radius); display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+  .chat-header { padding: 14px 20px; border-bottom: 1px solid var(--border); font-weight: 600; background: #fafbfc; border-radius: var(--radius) var(--radius) 0 0; display: flex; align-items: center; gap: 12px; }
+  .messages { flex: 1; overflow-y: auto; padding: 20px; background: var(--bg-chat); display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 75%; padding: 12px 16px; border-radius: 14px; line-height: 1.4; box-shadow: 0 2px 6px rgba(0,0,0,0.05); word-wrap: break-word; }
+  .msg.sent { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.received { align-self: flex-start; background: #fff; color: var(--text); border-bottom-left-radius: 4px; }
+  .msg-group { background: #e8f6ff !important; border-left: 3px solid var(--primary); }
+  .msg-sender { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  .msg-meta { font-size: 10px; opacity: 0.7; margin-top: 6px; text-align: right; }
+  .input-area { padding: 14px 20px; background: #fff; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; border-radius: 0 0 var(--radius) var(--radius); }
+  .input-area textarea { flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 24px; resize: none; height: 46px; font-size: 14px; outline: none; transition: 0.2s; font-family: inherit; }
+  .input-area textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2); }
+  .send-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 18px; }
+  .send-btn:hover { transform: scale(1.05); }
+  .file-uploader { padding: 10px 20px; border-top: 1px dashed var(--border); background: #fafbfc; text-align: center; }
+  .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 16px; text-align: center; padding: 20px; }
+
+  /* Modal Styles */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-box { background: #fff; padding: 24px; border-radius: 16px; width: 95%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-height: 90vh; overflow-y: auto; animation: modalSlide 0.3s ease; }
+  @keyframes modalSlide { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
+  .modal-form label { display: block; margin: 8px 0 4px; font-weight: 500; font-size: 13px; color: #555; }
+  .modal-form input, .modal-form textarea { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 14px; transition: 0.2s; }
+  .modal-form input:focus, .modal-form textarea:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(52,152,219,0.15); }
+  .member-checkbox { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+  .member-checkbox:hover { background: #f1f5f9; }
+  .member-checkbox input { width: 18px; height: 18px; cursor: pointer; }
+  #avatar-dropzone { border: 2px dashed #e2e8f0; border-radius: 10px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; margin-top: 4px; }
+  #avatar-dropzone:hover { border-color: var(--primary); color: var(--primary); background: #f8fafc; }
+</style>
+
+<h1 style="margin-bottom:15px;">💬 Мессенджер</h1>
+<div class="chat-wrapper">
+  <div class="chat-sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" data-tab="personal">👤 Личные</button>
+      <button class="tab-btn" data-tab="groups">👥 Команды</button>
+    </div>
+
+    <div id="tab-personal" class="user-list">
+      <div class="section-title" style="color: {% if current_user.role == 'student' %}var(--accent){% else %}var(--muted){% endif %};">
+        {% if current_user.role == 'student' %}📌 Ваш оператор{% else %}👤 Личные чаты{% endif %}
+      </div>
+
+      {% if users %}
+        {% for u in users %}
+        <a href="{{ url_for('chat', user_id=u.id) }}" class="chat-item {% if selected_user and selected_user.id == u.id %}active{% endif %}" data-id="{{ u.id }}">
+          <div class="avatar {% if current_user.role == 'student' %}pinned-op{% endif %}">
+            {{ u.username[0]|upper }}
+            <span class="status-dot {% if u.id in online_users %}online{% endif %}"></span>
+          </div>
+          <div class="item-info">
+            <div class="item-name">{{ u.username }}</div>
+            <div class="item-sub">{{ u.role }}{% if current_user.role == 'student' %} • закреплён{% endif %}</div>
+          </div>
+          <div class="item-actions">
+            {% if current_user.role == 'operator' and u.role != 'operator' %}
+              <button class="action-btn {% if pinned_ids is defined and u.id in pinned_ids %}pin-active{% endif %}" data-id="{{ u.id }}" onclick="togglePin(event, {{ u.id }})">📌</button>
+            {% endif %}
+            <button class="action-btn {% if u.id in fav_ids %}active{% endif %}" onclick="toggleFav(event, {{ u.id }})">{% if u.id in fav_ids %}★{% else %}☆{% endif %}</button>
+          </div>
+        </a>
+        {% endfor %}
+      {% else %}
+        <div style="padding:25px; text-align:center; color:#888; font-size:13px; line-height:1.5;">
+          {% if current_user.role == 'student' %}Оператор ещё не закрепил чат с вами.<br>Ожидайте назначения или обратитесь в поддержку.{% else %}Нет доступных контактов{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div id="tab-groups" class="user-list" style="display:none;">
+      <button id="btn-create-group" style="width:calc(100% - 24px); margin:12px; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px; padding:10px; border:none; border-radius:8px; background:linear-gradient(135deg, #3498db, #2980b9); color:#fff; cursor:pointer; transition:0.2s; box-shadow:0 2px 8px rgba(52,152,219,0.3);">
+        <span style="font-size:18px;">➕</span><span>Создать группу</span>
+      </button>
+
+      {% if my_groups %}
+      <div class="section-title">📢 Ваши группы</div>
+      {% for g in my_groups %}
+        <a href="{{ url_for('chat', group=g.id) }}" class="chat-item {% if selected_group and selected_group.id == g.id %}active{% endif %}" data-group-id="{{ g.id }}">
+          <div class="avatar group" {% if g.avatar %}style="background-image:url('{{ url_for('uploaded_file', filename=g.avatar) }}');"{% endif %}>
+            {% if not g.avatar %}💬{% endif %}
+          </div>
+          <div class="item-info">
+            <div class="item-name">{{ g.name }} {% if g.is_custom %}<span style="font-size:10px; color:#888;">(кастомная)</span>{% endif %}</div>
+            <div class="item-sub">{{ (g.description or 'Без описания') | truncate(40) }}</div>
+          </div>
+        </a>
+      {% endfor %}
+      {% else %}
+        <div style="padding:15px; text-align:center; color:#999; font-size:13px;">Нет групп. Создайте свою!</div>
+      {% endif %}
+
+      {% if same_role_users %}
+      <div class="section-title" style="margin-top:10px;">👥 Коллеги по роли</div>
+      {% for u in same_role_users %}
+        <a href="{{ url_for('chat', user_id=u.id) }}" class="chat-item {% if selected_user and selected_user.id == u.id %}active{% endif %}" data-id="{{ u.id }}">
+          <div class="avatar">{{ u.username[0]|upper }}<span class="status-dot {% if u.id in online_users %}online{% endif %}"></span></div>
+          <div class="item-info">
+            <div class="item-name">{{ u.username }}</div>
+            <div class="item-sub">{{ '🟢 в сети' if u.id in online_users else '⚪ не в сети' }}</div>
+          </div>
+        </a>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="chat-main">
+    {% if selected_user or selected_group %}
+      <div class="chat-header">
+        {% if selected_group %}
+          <div class="avatar group" style="width:34px; height:34px; font-size:15px; {% if selected_group.avatar %}background-image:url('{{ url_for('uploaded_file', filename=selected_group.avatar) }}');{% endif %}">
+            {% if not selected_group.avatar %}💬{% endif %}
+          </div>
+          <div>
+            <div>{{ selected_group.name }}</div>
+            <div style="font-size:12px; color:var(--muted);">{{ (selected_group.description or 'Групповой чат') | truncate(50) }}</div>
+          </div>
+        {% else %}
+          <div class="avatar {% if selected_user.role == 'operator' and current_user.role == 'student' %}pinned-op{% endif %}" style="width:34px; height:34px; font-size:15px;">{{ selected_user.username[0]|upper }}<span class="status-dot {% if selected_user.id in online_users %}online{% endif %}"></span></div>
+          <div>
+            <div>{{ selected_user.username }}</div>
+            <div style="font-size:12px; color:var(--muted);">{{ selected_user.role }} • {% if selected_user.id in online_users %}<span style="color:var(--online)">в сети</span>{% else %}не в сети{% endif %}</div>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="messages" id="chat-box"
+           data-type="{{ 'group' if selected_group else 'private' }}"
+           data-group-id="{{ selected_group.id if selected_group else '' }}"
+           data-other="{{ selected_user.id if selected_user else '' }}"
+           data-me="{{ current_user.id }}">
+        {% for msg in messages %}
+          <div class="msg {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %} {% if selected_group %}msg-group{% endif %}">
+            {% if selected_group and msg.sender_id != current_user.id %}
+              <div class="msg-sender">{{ msg.sender.username }}</div>
+            {% endif %}
+            <div>{{ msg.content }}</div>
+            <div class="msg-meta">{{ msg.timestamp.strftime('%H:%M') }}</div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="input-area">
+        <form id="msg-form" style="display:flex; gap:10px; flex:1; align-items:center; width:100%;">
+          <textarea id="msg-input" placeholder="Введите сообщение..." required></textarea>
+          <button type="submit" class="send-btn" title="Отправить">➤</button>
+        </form>
+      </div>
+
+      {% if not selected_group %}
+      <div class="file-uploader">
+        <form method="POST" action="{{ url_for('send_message') }}" enctype="multipart/form-data" style="display:inline-flex; gap:10px; align-items:center;">
+          <input type="hidden" name="receiver_id" value="{{ selected_user.id }}">
+          <input type="file" name="file" style="font-size:13px;">
+          <button class="btn btn-secondary" type="submit" style="padding:8px 16px; font-size:13px;">📎 Прикрепить файл</button>
+        </form>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div class="empty-state">
+        <div>
+          <div style="font-size:40px; margin-bottom:10px;">💬</div>
+          Выберите диалог или группу слева
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Модальное окно создания группы -->
+<div id="group-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #eee;">
+      <h3 style="margin:0; color:#2c3e50; font-size:18px;">✨ Создать группу</h3>
+      <button id="close-modal-top" style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; transition:0.2s;">&times;</button>
+    </div>
+    <form id="group-form" class="modal-form" enctype="multipart/form-data">
+      <label>Название группы *</label>
+      <input type="text" name="name" required placeholder="Например: Подготовка к ЕГЭ 2026">
+
+      <label>Цель / Описание</label>
+      <textarea name="description" rows="3" placeholder="Для чего создаётся эта группа?"></textarea>
+
+      <label>Аватар группы</label>
+      <div id="avatar-dropzone" onclick="document.querySelector('input[name=avatar]').click()">
+        <input type="file" name="avatar" accept="image/png, image/jpeg" style="display:none;" onchange="previewAvatar(this)">
+        <div id="avatar-preview" style="font-size:13px; color:#666;"><span style="font-size:24px;">📷</span><br>Нажмите для загрузки</div>
+        <img id="avatar-img" style="max-width:100px; max-height:100px; border-radius:8px; margin-top:10px; display:none;">
+      </div>
+
+      <label style="margin-top:12px;">Участники <span style="color:#999; font-weight:400;">(коллеги по роли)</span></label>
+      <div id="member-list" style="max-height:200px; overflow-y:auto; border:2px solid #e2e8f0; border-radius:10px; padding:10px; background:#fafbfc;">
+        <div style="text-align:center; padding:20px; color:#999;">Загрузка списка...</div>
+      </div>
+      <div style="margin-top:8px; font-size:12px; color:#888;">
+        <input type="checkbox" id="select-all-members" style="margin-right:5px;"> Выбрать всех
+      </div>
+
+      <div style="display:flex; gap:12px; margin-top:20px; padding-top:15px; border-top:1px solid #eee;">
+        <button type="button" id="close-modal-bottom" class="btn btn-secondary" style="flex:1; padding:12px; border:none; border-radius:10px; background:#e2e8f0; color:#555; font-weight:500; cursor:pointer; transition:0.2s;">Отмена</button>
+        <button type="submit" class="btn btn-primary" style="flex:1; padding:12px; border:none; border-radius:10px; background:linear-gradient(135deg, #3498db, #2980b9); color:#fff; font-weight:500; cursor:pointer; transition:0.2s;">Создать группу ✨</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const socket = io();
+const box = document.getElementById('chat-box');
+if(box) box.scrollTop = box.scrollHeight;
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-personal').style.display = btn.dataset.tab === 'personal' ? 'block' : 'none';
+    document.getElementById('tab-groups').style.display = btn.dataset.tab === 'groups' ? 'block' : 'none';
+  });
+});
+
+if(box) {
+  const me = parseInt(box.dataset.me || 0);
+  const other = parseInt(box.dataset.other || 0);
+  const groupId = parseInt(box.dataset.groupId || 0);
+  const type = box.dataset.type;
+  const role = '{{ current_user.role }}';
+
+  socket.on('connect', () => {
+    if(me) {
+      socket.emit('register_online', {user_id: me});
+      socket.emit('join', {room: `user_${me}`});
+    }
+    if(type === 'private' && me && other) socket.emit('join_chat', {sender_id: me, other_id: other});
+    if(type === 'group' && groupId > 0) socket.emit('join_group_room', {group_id: groupId});
+  });
+
+  socket.on('new_message', (d) => {
+    if(type !== 'private') return;
+    appendMsg(d.content, d.sender_id == me ? 'sent' : 'received', d.timestamp);
+  });
+
+  socket.on('new_group_message', (d) => {
+    if(type !== 'group') return;
+    const isMine = d.sender_name === '{{ current_user.username }}';
+    appendMsg(d.content, isMine ? 'sent' : 'received', d.timestamp, true, d.sender_name);
+  });
+
+  socket.on('new_notification', (d) => {
+    if('Notification' in window && Notification.permission === 'granted') {
+      new Notification(d.title, {body: d.message, icon: '/static/favicon.ico'});
+    }
+    const badge = document.getElementById('notif-badge');
+    if(badge) badge.textContent = (parseInt(badge.textContent) || 0) + 1;
+  });
+
+  socket.on('user_status', (d) => {
+    document.querySelectorAll('.chat-item').forEach(el => {
+      if(el.dataset.id == d.user_id) {
+        const dot = el.querySelector('.status-dot');
+        if(dot) dot.className = `status-dot ${d.status==='online'?'online':''}`;
+      }
+    });
+  });
+
+  document.getElementById('msg-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = document.getElementById('msg-input');
+    if(!t.value.trim()) return;
+    if(type === 'private') {
+      socket.emit('send_message', {sender_id: me, receiver_id: other, content: t.value});
+    } else {
+      socket.emit('send_group_message', {role: role, content: t.value, group_id: groupId});
+    }
+    t.value = '';
+  });
+
+  function appendMsg(content, cls, time, isGroup=false, senderName=null) {
+    const el = document.createElement('div');
+    el.className = `msg ${cls} ${isGroup?'msg-group':''}`;
+    let html = '';
+    if(isGroup && !cls.includes('sent') && senderName) html += `<div class="msg-sender">${escapeHtml(senderName)}</div>`;
+    html += `<div>${escapeHtml(content)}</div><div class="msg-meta">${time}</div>`;
+    el.innerHTML = html;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  if('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+}
+
+async function togglePin(e, userId) {
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.currentTarget;
+  try {
+    const res = await fetch('/chat/pin', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`user_id=${userId}` });
+    const data = await res.json();
+    if(data.ok) { btn.classList.toggle('pin-active'); btn.title = data.pinned ? 'Открепить чат' : 'Закрепить чат'; }
+  } catch(err) { console.error('Pin error:', err); }
+}
+
+async function toggleFav(e, userId) {
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.currentTarget;
+  try {
+    await fetch('/chat/favorite/toggle', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`target_id=${userId}` });
+    btn.classList.toggle('active');
+    btn.textContent = btn.classList.contains('active') ? '★' : '☆';
+  } catch(err) { console.error('Fav error:', err); }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div'); div.textContent = text; return div.innerHTML;
+}
+
+function previewAvatar(input) {
+  const preview = document.getElementById('avatar-preview');
+  const img = document.getElementById('avatar-img');
+  if(input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = (e) => { preview.style.display = 'none'; img.src = e.target.result; img.style.display = 'block'; };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+document.getElementById('select-all-members')?.addEventListener('change', (e) => {
+  document.querySelectorAll('#member-list input[type="checkbox"]').forEach(cb => { if(cb.name === 'members') cb.checked = e.target.checked; });
+});
+
+const modal = document.getElementById('group-modal');
+document.getElementById('btn-create-group')?.addEventListener('click', async () => {
+  modal.style.display = 'flex';
+  const list = document.getElementById('member-list');
+  list.innerHTML = '<div style="text-align:center; padding:10px;">Загрузка...</div>';
+  try {
+    const res = await fetch('/chat/suggest_users');
+    const users = await res.json();
+    if(users.length === 0) {
+      list.innerHTML = '<div style="padding:10px; color:#999;">Нет доступных коллег вашей роли</div>';
+    } else {
+      list.innerHTML = users.map(u => `<label class="member-checkbox"><input type="checkbox" name="members" value="${u.id}"> ${u.name}</label>`).join('');
+    }
+  } catch(e) { list.innerHTML = '<div style="padding:10px; color:red;">Ошибка загрузки списка</div>'; }
+});
+
+['close-modal-top', 'close-modal-bottom'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => modal.style.display = 'none');
+});
+window.addEventListener('click', (e) => { if(e.target === modal) modal.style.display = 'none'; });
+
+document.getElementById('group-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const btn = e.target.querySelector('button[type="submit"]');
+  const originalText = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '⟳ Создание...';
+  try {
+    const res = await fetch('/chat/create_group', { method:'POST', body: form });
+    const data = await res.json();
+    if(data.ok) { modal.style.display = 'none'; window.location.href = `/chat?group=${data.group_id}`; }
+    else alert('❌ ' + (data.error || 'Ошибка создания'));
+  } catch(err) { alert('Ошибка сети: ' + err.message); }
+  finally { btn.disabled = false; btn.innerHTML = originalText; }
+});
+</script>
+{% endblock %}

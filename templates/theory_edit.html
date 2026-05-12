@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Редактирование теории{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:20px;">✏️ Редактирование теории</h1>
+
+<div class="card">
+  <h3>Добавить блок теории</h3>
+  <form method="POST" action="{{ url_for('add_block') }}" style="display:flex; gap:10px; margin-top:10px;">
+    <input type="text" name="title" placeholder="Название блока" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:8px;" required>
+    <button type="submit" class="btn btn-success">Добавить блок</button>
+  </form>
+</div>
+
+{% for block in blocks %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>{{ block.title }}</h2>
+    <form method="POST" action="{{ url_for('delete_block', block_id=block.id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-danger" style="padding:5px 10px;" onclick="return confirm('Удалить блок и все темы внутри?')">🗑 Удалить блок</button>
+    </form>
+  </div>
+
+  <form method="POST" action="{{ url_for('add_topic', block_id=block.id) }}" style="display:flex; gap:10px; margin:15px 0;">
+    <input type="text" name="title" placeholder="Название темы" style="flex:1; padding:10px; border:2px solid #ddd; border-radius:8px;" required>
+    <button type="submit" class="btn btn-primary">Добавить тему</button>
+  </form>
+
+  {% for topic in block.topics %}
+  <div style="background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:10px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <strong>📄 {{ topic.title }}</strong>
+      <form method="POST" action="{{ url_for('delete_topic', topic_id=topic.id) }}" style="display:inline;">
+        <button type="submit" class="btn btn-danger" style="padding:4px 8px; font-size:12px;" onclick="return confirm('Удалить тему?')">🗑 Удалить</button>
+      </form>
+    </div>
+    <!-- 🔑 ИСПРАВЛЕНИЕ: добавлен enctype -->
+    <form method="POST" action="{{ url_for('upload_file', topic_id=topic.id) }}" style="display:flex; gap:10px; margin-top:10px; align-items:center;" enctype="multipart/form-data">
+      <input type="file" name="file" style="flex:1;">
+      <button type="submit" class="btn btn-success">📎 Прикрепить файл</button>
+    </form>
+    {% if topic.files %}
+    <div style="margin-top:10px; font-size:14px;">
+      Файлы:
+      {% for f in topic.files %}
+        <a href="{{ url_for('uploaded_file', filename=f.filepath) }}" style="margin-right:15px; color:#3498db;">📄 {{ f.filename }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

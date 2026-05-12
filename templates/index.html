@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Olimp — Главная{% endblock %}
+{% block content %}
+<div class="card" style="text-align:center; padding:40px;">
+    <h1 style="font-size:36px; margin-bottom:10px;">Добро пожаловать в Olimp</h1>
+    <p style="font-size:18px; color:#666;">Платформа для подготовки к олимпиадам</p>
+</div>
+
+{% if current_user.is_authenticated %}
+<div class="hero-buttons">
+    <a href="{{ url_for('theory') }}" class="hero-btn">📚 Теория</a>
+    <a href="{{ url_for('problems') }}" class="hero-btn">📝 Банк задач</a>
+    <a href="{{ url_for('chat') }}" class="hero-btn">💬 Чат с администрацией</a>
+    {% if current_user.role in ['admin', 'super_admin', 'moderator', 'editor'] %}
+        <a href="{{ url_for('theory_edit') }}" class="hero-btn">✏️ Редактировать теорию</a>
+    {% endif %}
+    {% if current_user.role in ['admin', 'super_admin', 'editor'] %}
+        <a href="{{ url_for('problem_bank_edit') }}" class="hero-btn">📋 Редактировать задачи</a>
+    {% endif %}
+</div>
+{% else %}
+<div class="card" style="text-align:center; padding:40px;">
+    <p style="font-size:18px; margin-bottom:20px;">Войдите или зарегистрируйтесь для доступа к материалам</p>
+    <a href="{{ url_for('login') }}" class="btn btn-primary">Вход</a>
+    <a href="{{ url_for('register') }}" class="btn btn-success">Регистрация</a>
+</div>
+{% endif %}
+{% endblock %}

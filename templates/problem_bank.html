@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Банк задач{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:20px;">📝 Банк задач</h1>
+
+<div style="margin-bottom:20px;">
+    <a href="{{ url_for('problems') }}" class="btn btn-primary">Все</a>
+    <a href="{{ url_for('problems', difficulty='easy') }}" class="btn btn-success">Лёгкие</a>
+    <a href="{{ url_for('problems', difficulty='medium') }}" class="btn btn-warning">Средние</a>
+    <a href="{{ url_for('problems', difficulty='hard') }}" class="btn btn-danger">Сложные</a>
+</div>
+
+{% if problems %}
+    {% for problem in problems %}
+    <div class="card">
+        <h2>{{ problem.title }}</h2>
+        <span class="badge {% if problem.difficulty == 'easy' %}badge-student{% elif problem.difficulty == 'medium' %}badge-moderator{% else %}badge-admin{% endif %}">
+            {{ problem.difficulty }}
+        </span>
+        <p style="margin-top:10px; white-space:pre-line;">{{ problem.description[:200] }}{% if problem.description|length > 200 %}...{% endif %}</p>
+        <a href="{{ url_for('problem_detail', problem_id=problem.id) }}" class="btn btn-primary" style="margin-top:10px;">Подробнее</a>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card" style="text-align:center; padding:40px;">
+        <p style="font-size:18px; color:#999;">Задач пока нет</p>
+    </div>
+{% endif %}
+{% endblock %}

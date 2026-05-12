@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Теория{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:20px;">📚 Теория</h1>
+
+{% if blocks %}
+    {% for block in blocks %}
+    <div class="card">
+        <h2>{{ block.title }}</h2>
+        {% if block.topics %}
+            <ul style="margin-left:20px; margin-top:10px;">
+                {% for topic in block.topics %}
+                <li style="margin-bottom:8px;">
+                    <a href="{{ url_for('theory_topic', block_id=block.id, topic_id=topic.id) }}" style="color:#3498db; text-decoration:none; font-size:16px;">
+                        📄 {{ topic.title }}
+                        {% if topic.files %}({{ topic.files|length }} файлов){% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p style="color:#999; margin-top:10px;">Тем пока нет</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card" style="text-align:center; padding:40px;">
+        <p style="font-size:18px; color:#999;">Теория ещё не добавлена</p>
+    </div>
+{% endif %}
+{% endblock %}
