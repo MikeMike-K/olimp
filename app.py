@@ -57,7 +57,14 @@ def inject_globals():
 
 
 # SocketIO (threading для стабильности на Python 3.13)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
+# ✅ Используем threading для совместимости с Python 3.14 на Render
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',  # 🔹 Ключевое изменение
+    logger=False,
+    engineio_logger=False
+)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar'}
 
