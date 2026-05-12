@@ -51,6 +51,10 @@ socketio = SocketIO(
     ping_interval=25
 )
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+
 
 @login_manager.user_loader
 def load_user(user_id):
